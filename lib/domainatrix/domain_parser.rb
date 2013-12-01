@@ -1,7 +1,7 @@
 module Domainatrix
   class DomainParser
     include Addressable
-    
+
     attr_reader :public_suffixes
 
     def initialize(file_name)
@@ -16,7 +16,7 @@ module Domainatrix
       else
         dat_file = File.open(file_name)
       end
-      
+
       dat_file.each_line do |line|
         line = line.strip
         unless (line =~ /\/\//) || line.empty?
@@ -32,61 +32,83 @@ module Domainatrix
 
     def parse(url)
       return {} unless url && url.strip != ''
-      url = "http://#{url}" unless url[/:\/\//]
-      uri = URI.parse(url)
-      if uri.query
-        path = "#{uri.path}?#{uri.query}"
-      else
-        path = uri.path
-      end
-      
-      localhost_re  = /(\A|\.)localhost\z/
-      ip_re         = /\A\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\z/
-      
-      if uri.host =~ localhost_re
-        uri_hash = { :public_suffix => '', :domain => 'localhost', :subdomain => uri.host.sub(localhost_re, ''), :localhost => true }
-      elsif uri.host =~ ip_re
-        uri_hash = { :public_suffix => '', :domain => uri.host, :subdomain => '', :ip => true }
-      else
-        uri_hash = parse_domains_from_host(uri.host || uri.basename)
-      end
-
-      uri_hash.merge({
-        :scheme => uri.scheme,
-        :host   => uri.host,
-        :port   => (uri.port == uri.default_port) ? nil : uri.port,
-        :path   => path,
-        :url    => url
-      })
+      Parser.new(url, public_suffixes).parse
     end
 
-    def parse_domains_from_host(host)
-      return {} unless host
-      parts = host.split(".").reverse
-      public_suffix = []
-      domain = ""
-      subdomains = []
-      sub_hash = @public_suffixes
+    class Parser
+      def initialize(the_url, public_suffixes)
+        @the_url = the_url
+        @public_suffixes = public_suffixes
+      end
 
-      parts.each_with_index do |part, i|
-        sub_hash = sub_parts = sub_hash[part] || {}
-        if sub_parts.has_key? "*"
-          public_suffix << part
-          public_suffix << parts[i+1]
-          domain = parts[i+2]
-          subdomains = parts.slice(i+3, parts.size) || []
-          break
-        elsif sub_parts.empty? || !sub_parts.has_key?(parts[i+1])
-          public_suffix << part
-          domain = parts[i+1]
-          subdomains = parts.slice(i+2, parts.size) || []
-          break
+      def parse
+        uri_hash.merge({
+          :scheme => uri.scheme,
+          :host   => uri.host,
+          :port   => (uri.port == uri.default_port) ? nil : uri.port,
+          :path   => path,
+          :url    => url
+        })
+      end
+
+      def uri_hash
+        if uri.host =~ localhost_re
+          { :public_suffix => '', :domain => 'localhost', :subdomain => uri.host.sub(localhost_re, ''), :localhost => true }
+        elsif uri.host =~ ip_re
+          { :public_suffix => '', :domain => uri.host, :subdomain => '', :ip => true }
         else
-          public_suffix << part
+          parse_domains_from_host(uri.host || uri.basename)
         end
       end
 
-      {:public_suffix => public_suffix.reverse.join("."), :domain => domain, :subdomain => subdomains.reverse.join(".")}
+      def url
+        @url ||= @the_url[/:\/\//] ? @the_url : "http://#{@the_url}"
+      end
+
+      def uri
+        @uri = URI.parse(url)
+      end
+
+      def path
+        @path ||= uri.query ? "#{uri.path}?#{uri.query}" : uri.path
+      end
+
+      def localhost_re
+        /(\A|\.)localhost\z/
+      end
+
+      def ip_re
+        /\A\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\z/
+      end
+
+      def parse_domains_from_host(host)
+        return {} unless host
+        parts = host.split(".").reverse
+        public_suffix = []
+        domain = ""
+        subdomains = []
+        sub_hash = @public_suffixes
+
+        parts.each_with_index do |part, i|
+          sub_hash = sub_parts = sub_hash[part] || {}
+          if sub_parts.has_key? "*"
+            public_suffix << part
+            public_suffix << parts[i+1]
+            domain = parts[i+2]
+            subdomains = parts.slice(i+3, parts.size) || []
+            break
+          elsif sub_parts.empty? || !sub_parts.has_key?(parts[i+1])
+            public_suffix << part
+            domain = parts[i+1]
+            subdomains = parts.slice(i+2, parts.size) || []
+            break
+          else
+            public_suffix << part
+          end
+        end
+
+        {:public_suffix => public_suffix.reverse.join("."), :domain => domain, :subdomain => subdomains.reverse.join(".")}
+      end
     end
   end
 end
