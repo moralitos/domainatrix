@@ -31,7 +31,6 @@ module Domainatrix
     end
 
     def parse(url)
-      return {} unless url && url.strip != ''
       Parser.new(url, public_suffixes).parse
     end
 
@@ -42,6 +41,7 @@ module Domainatrix
       end
 
       def parse
+        return {} unless @the_url && @the_url.strip != ''
         uri_hash.merge({
           :scheme => uri.scheme,
           :host   => uri.host,
